@@ -33,6 +33,7 @@ CLASSES = ('__background__',
 
 NETS = {'vgg16': ('VGG16',
                   'vgg16_fast_rcnn_iter_40000.caffemodel'),
+        'vgg16submission' :('VGG16','vgg16_fast_rcnn_iter_100000.caffemodel'),          
         'vgg_cnn_m_1024': ('VGG_CNN_M_1024',
                            'vgg_cnn_m_1024_fast_rcnn_iter_40000.caffemodel'),
         'caffenet': ('CaffeNet',
@@ -164,7 +165,7 @@ def parse_args():
                         help='Use CPU mode (overrides --gpu)',
                         action='store_true')
     parser.add_argument('--net', dest='demo_net', help='Network to use [vgg16]',
-                        choices=NETS.keys(), default='vgg16')
+                        choices=NETS.keys(), default='vgg16submission')
     parser.add_argument('--input_im_root', dest='input_im_root', default='/media/torrvision/catz/Data/VOCdevkit/VOC2012/JPEGImages')
     parser.add_argument('--output_root', dest='output_root', default='/home/torrvision/densecrf-reimp/bbox')                    
 
