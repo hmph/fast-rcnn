@@ -83,17 +83,54 @@ def write_detection(file_pointer, label, score, bbox):
     file_pointer.write(str(score) + "\n")
     file_pointer.write(str(bbox[0]) + " " + str(bbox[1]) + " " + str(bbox[2]) + " " + str(bbox[3]) + "\n")
     
+    
+def write_segmentation_mask(file_pointer, label, score, bbox, segmentation_pixels, WIDTH=500):
+    
+    count = 0
+    file_pointer.write(str(label) + "\n")
+    file_pointer.write(str(score) + "\n")
+    for pixel in segmentation_pixels:
+        
+        y1,x1,y2,x2 = bbox[0], bbox[1], bbox[2], bbox[3]       
+        pixel_x = pixel%WIDTH
+        pixel_y = int(pixel / WIDTH)
+
+        if (pixel_x >= int(x1) and pixel_x <= int(x2) and pixel_y >= int(y1) and pixel_y <= int(y2) ):        
+            file_pointer.write(str(pixel) + " ")
+            count = count + 1
+    
+    file_pointer.write("\n")
+    print "Wrote", count, "out of", len(segmentation_pixels), "pixels"
+    
 def close_file_write(file_pointer):
     
     file_pointer.write("0")
     file_pointer.close()
-    # close_file    
+    # close_file
+
+def find_index(matrix, row):
+    """If numpy was not so fucking retarded, I could have used a built in function to find out the index of a row in a matrix"""
+        
+    if (matrix.shape[1] != len(row)):
+        return -1
+    for r in range(matrix.shape[0]):
+        isEqual = True
+        
+        for c in range(matrix.shape[1]):
+            isEqual = isEqual & (int(matrix[r][c]) == int(row[c]) ) # Since Python somehow has floating point values of different precision here
+        
+        if (isEqual):
+            return r
     
-def process_image (net, image_name, im_root, obj_proposals, output_root, NMS_THRESH=0.3, CONF_THRESH=0.8, out_ext = ".bbox"):
+    return -1
+                
+def process_image (net, image_name, im_root, obj_proposals, output_root, segmask_root, NMS_THRESH=0.3, CONF_THRESH=0.8, out_ext = ".bbox"):
     
     # IO   
-    im_file = os.path.join(im_root, image_name+'.jpg') #Todo: Sort this out properly    
+    im_file = os.path.join(im_root, image_name+'.jpg')   
     im = cv2.imread(im_file)
+    segmask_data  = sio.loadmat( os.path.join(segmask_root, image_name+'_segmsk.mat') )
+    segmasks = segmask_data['segmasks']
     
     output_file = begin_file_write( os.path.join(output_root, image_name+out_ext) )
     
@@ -113,7 +150,12 @@ def process_image (net, image_name, im_root, obj_proposals, output_root, NMS_THR
         dets = dets[keep, :]
         
         for i in range(dets.shape[0]):
-            write_detection(output_file, cls_ind, dets[i][4], dets[i][0:4])
+            
+            #idx = np.where( np.all(boxes[:, 4*cls_ind:4*(cls_ind + 1)] == np.array(dets[i][0:4]) ) )
+            idx = find_index(boxes[:, 4*cls_ind:4*(cls_ind + 1)], dets[i][0:4])            
+            segmask_pixels = np.squeeze(segmasks[0,idx])            
+            write_segmentation_mask(output_file, cls_ind, dets[i][4], dets[i][0:4], segmask_pixels)
+            #write_detection(output_file, cls_ind, dets[i][4], dets[i][0:4])
         
     
     close_file_write(output_file)
@@ -167,7 +209,8 @@ def parse_args():
     parser.add_argument('--net', dest='demo_net', help='Network to use [vgg16]',
                         choices=NETS.keys(), default='vgg16submission')
     parser.add_argument('--input_im_root', dest='input_im_root', default='/media/torrvision/catz/Data/VOCdevkit/VOC2012/JPEGImages')
-    parser.add_argument('--output_root', dest='output_root', default='/home/torrvision/densecrf-reimp/bbox')                    
+    parser.add_argument('--output_root', dest='output_root', default='/media/torrvision/catz/pascal-bbox')  
+    parser.add_argument('--segmask_root', dest='segmask_root', default='/media/torrvision/catz/selective_search_data_own/')                  
 
     args = parser.parse_args()
 
@@ -196,30 +239,41 @@ def main():
         raise IOError(('{:s} not found.\nDid you run ./data/scripts/'
                        'fetch_fast_rcnn_models.sh?').format(caffemodel))
 
-    if args.cpu_mode:
-        caffe.set_mode_cpu()
-    else:
-        caffe.set_mode_gpu()
-        caffe.set_device(args.gpu_id)
+ #   if args.cpu_mode:
+ #       caffe.set_mode_cpu()
+ #   else:
+ #       caffe.set_mode_gpu()
+ #       caffe.set_device(args.gpu_id)
+    caffe.set_mode_cpu()
     net = caffe.Net(prototxt, caffemodel, caffe.TEST)
     
     print '\n\nLoaded network {:s}'.format(caffemodel)
     
     input_im_root = args.input_im_root
     output_root = args.output_root
+    segmask_root = args.segmask_root
     
     #Actual stuff
-    proposals, filenames = get_filenames_and_proposals("voc_2012_trainval.mat")
+    #proposals, filenames = get_filenames_and_proposals("voc_2012_trainval.mat")
+    filenames_file = os.path.join(cfg.ROOT_DIR, 'data', 'VOC2012', 'ImageSets', 'Segmentation', 'trainval.txt')
+    filenames_fp = open(filenames_file, 'r')    
+    filenames =  filenames_fp.readlines()
+    filenames_fp.close()
     
     for i in range(len(filenames)):
         #imname = filenames[i]
-        imname = [str(''.join(letter)) for letter_array in filenames[i] for letter in letter_array]
-        imname = imname[0]
+        #imname = [str(''.join(letter)) for letter_array in filenames[i] for letter in letter_array]
+        #imname = imname[0]
+        #i = 636
+        imname = filenames[i].strip()
 
-        proposal_file = sio.loadmat( os.path.join(cfg.ROOT_DIR, 'data', 'selective_search_data', 'voc_2012_trainval', imname+'bbox.mat') )        
-        prop = proposal_file['box']
+        proposal_file = sio.loadmat( os.path.join(cfg.ROOT_DIR, 'data', 'selective_search_data_own', imname+'_bbox.mat') )        
+        prop = proposal_file['boxes']
         
-        process_image(net, imname, input_im_root, prop, output_root)
+        print i, ":", imname 
+        process_image(net, imname, input_im_root, prop, output_root, segmask_root)
+        
+        #break
     
 if __name__ == '__main__':
     main()
