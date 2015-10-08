@@ -211,7 +211,8 @@ def parse_args():
     parser.add_argument('--input_im_root', dest='input_im_root', default='/media/torrvision/catz/Data/VOCdevkit/VOC2012/JPEGImages')
     parser.add_argument('--output_root', dest='output_root', default='/media/torrvision/catz/pascal-bbox')  
     parser.add_argument('--segmask_root', dest='segmask_root', default='/media/torrvision/catz/selective_search_data_own/')                  
-
+    parser.add_argument('--i', dest='i', default=-1, type=int)    
+    
     args = parser.parse_args()
 
     return args
@@ -260,7 +261,15 @@ def main():
     filenames =  filenames_fp.readlines()
     filenames_fp.close()
     
-    for i in range(len(filenames)):
+    i = args.i
+    
+    start = 0
+    end = len(filenames)
+    if (i != -1):
+        start = i
+        end = i+1
+    
+    for i in range(start, end):
         #imname = filenames[i]
         #imname = [str(''.join(letter)) for letter_array in filenames[i] for letter in letter_array]
         #imname = imname[0]
