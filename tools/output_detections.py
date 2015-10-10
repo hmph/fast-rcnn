@@ -143,7 +143,34 @@ def find_index(matrix, row):
             return r
     
     return -1
+    
+def grabcut (image, detection, IMWIDTH=500):
+    mask = np.zeros(image.shape[:2], np.uint8)        
+    backgroundModel = np.zeros( (1,65), np.float64 )
+    foregroundModel = np.zeros( (1,65), np.float64 )
+    numIterations = 10
+    
+    rect = ( int(detection[0]), int(detection[1]), int(detection[2] - detection[0]), int(detection[3] - detection[1]) )
+    cv2.grabCut(image, mask, rect, backgroundModel, foregroundModel, numIterations, cv2.GC_INIT_WITH_RECT)
+    
+    maskOutput = np.where( (mask==2)|(mask==0), 0, 1 ).astype('uint8')
+    #seg = image*mask_bg[:,:,np.newaxis]
+    
+    if (IMWIDTH == -1):
+        IMWIDTH = maskOutput.shape[1]
+    
+    pixels = []
+    for y in range(maskOutput.shape[0]):
+        for x in range(maskOutput.shape[1]):
+            if (maskOutput[y][x]):
+                pixels.append( y*IMWIDTH + x)
                 
+        
+    #plt.imshow(seg)
+    #plt.show()
+        
+    return pixels
+        
 def process_image (net, image_name, im_root, obj_proposals, output_root, segmask_root, NMS_THRESH=0.3, CONF_THRESH=0.6, out_ext = ".bbox"):
     
     # IO   
@@ -173,12 +200,20 @@ def process_image (net, image_name, im_root, obj_proposals, output_root, segmask
             
             #idx = np.where( np.all(boxes[:, 4*cls_ind:4*(cls_ind + 1)] == np.array(dets[i][0:4]) ) )
             idx = find_index(boxes[:, 4*cls_ind:4*(cls_ind + 1)], dets[i][0:4])            
-            segmask_pixels = np.squeeze(segmasks[0,idx])            
-            write_segmentation_mask(output_file, cls_ind, dets[i][4], dets[i][0:4], segmask_pixels)
-            #write_detection(output_file, cls_ind, dets[i][4], dets[i][0:4])
+            segmask_pixels = np.squeeze(segmasks[0,idx])   
             
+            ##before grabcut
+            #write_segmentation_mask(output_file, cls_ind, dets[i][4], dets[i][0:4], segmask_pixels)
+            ## write_detection(output_file, cls_ind, dets[i][4], dets[i][0:4])
+            #imtemp = im.copy()
+            #view_segmentation(imtemp, segmask_pixels, dets[i][0:4])
+            # vis_detections(imtemp, CLASSES[cls_ind], dets, thresh=CONF_THRESH, save_path=os.path.join(output_root, image_name+'_'+str(idx)+'_'+str(cls_ind)+'_'+str(i)+'_'+'plot.png'))
+
+            seg_grabcut = grabcut(im, dets[i][0:4])
+            write_segmentation_mask(output_file, cls_ind, dets[i][4], dets[i][0:4], seg_grabcut)            
+                        
             imtemp = im.copy()
-            view_segmentation(imtemp, segmask_pixels, dets[i][0:4])
+            view_segmentation(imtemp, seg_grabcut, dets[i][0:4])
             vis_detections(imtemp, CLASSES[cls_ind], dets, thresh=CONF_THRESH, save_path=os.path.join(output_root, image_name+'_'+str(idx)+'_'+str(cls_ind)+'_'+str(i)+'_'+'plot.png'))
     
     close_file_write(output_file)
@@ -232,7 +267,7 @@ def parse_args():
     parser.add_argument('--net', dest='demo_net', help='Network to use [vgg16]',
                         choices=NETS.keys(), default='vgg16submission')
     parser.add_argument('--input_im_root', dest='input_im_root', default='/media/torrvision/catz/Data/VOCdevkit/VOC2012/JPEGImages')
-    parser.add_argument('--output_root', dest='output_root', default='/media/torrvision/catz/pascal-bbox/correct')  
+    parser.add_argument('--output_root', dest='output_root', default='/media/torrvision/catz/pascal-bbox/gc')  
     parser.add_argument('--segmask_root', dest='segmask_root', default='/media/torrvision/catz/selective_search_data_own/')                  
     parser.add_argument('--i', dest='i', default=-1, type=int)    
     
@@ -296,7 +331,6 @@ def main():
         #imname = filenames[i]
         #imname = [str(''.join(letter)) for letter_array in filenames[i] for letter in letter_array]
         #imname = imname[0]
-        i = 1
         imname = filenames[i].strip()
 
         proposal_file = sio.loadmat( os.path.join(cfg.ROOT_DIR, 'data', 'selective_search_data_own', imname+'_bbox.mat') )        
