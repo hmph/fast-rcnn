@@ -23,6 +23,7 @@ import numpy as np
 import scipy.io as sio
 import caffe, os, sys, cv2
 import argparse
+import pdb
 
 CLASSES = ('__background__',
            'aeroplane', 'bicycle', 'bird', 'boat',
@@ -40,7 +41,7 @@ NETS = {'vgg16': ('VGG16',
                      'caffenet_fast_rcnn_iter_40000.caffemodel')}
 
 
-def vis_detections(im, class_name, dets, thresh=0.5):
+def vis_detections(im, class_name, dets, thresh=0.5, save_path=''):
     """Draw detected bounding boxes."""
     inds = np.where(dets[:, -1] >= thresh)[0]
     if len(inds) == 0:
@@ -64,13 +65,17 @@ def vis_detections(im, class_name, dets, thresh=0.5):
                 bbox=dict(facecolor='blue', alpha=0.5),
                 fontsize=14, color='white')
 
-    ax.set_title(('{} detections with '
-                  'p({} | box) >= {:.1f}').format(class_name, class_name,
-                                                  thresh),
-                  fontsize=14)
+    #ax.set_title(('{} detections with '
+    #              'p({} | box) >= {:.1f}').format(class_name, class_name,
+    #                                              thresh),
+    #              fontsize=14)
     plt.axis('off')
     plt.tight_layout()
-    plt.draw()
+    
+    if (save_path==''):
+        plt.draw()
+    else:
+        plt.savefig(save_path)
     
 def begin_file_write(filename):
     
@@ -91,7 +96,8 @@ def write_segmentation_mask(file_pointer, label, score, bbox, segmentation_pixel
     file_pointer.write(str(score) + "\n")
     for pixel in segmentation_pixels:
         
-        y1,x1,y2,x2 = bbox[0], bbox[1], bbox[2], bbox[3]       
+        #y1,x1,y2,x2 = bbox[0], bbox[1], bbox[2], bbox[3]     
+        x1,y1,x2,y2 = bbox[0], bbox[1], bbox[2], bbox[3]     
         pixel_x = pixel%WIDTH
         pixel_y = int(pixel / WIDTH)
 
@@ -107,6 +113,20 @@ def close_file_write(file_pointer):
     file_pointer.write("0")
     file_pointer.close()
     # close_file
+    
+def view_segmentation(im, segmentation_pixels, bbox, WIDTH=500):
+    
+     for pixel in segmentation_pixels:
+        
+       # pdb.set_trace()
+       # y1,x1,y2,x2 = bbox[0], bbox[1], bbox[2], bbox[3]       
+        x1,y1,x2,y2 = bbox[0], bbox[1], bbox[2], bbox[3]  
+        pixel_x = pixel%WIDTH
+        pixel_y = int(pixel / WIDTH)
+
+        if (pixel_x >= int(x1) and pixel_x <= int(x2) and pixel_y >= int(y1) and pixel_y <= int(y2) ):        
+            im[pixel_y,pixel_x,:] = [255,255,255]
+   
 
 def find_index(matrix, row):
     """If numpy was not so fucking retarded, I could have used a built in function to find out the index of a row in a matrix"""
@@ -124,7 +144,7 @@ def find_index(matrix, row):
     
     return -1
                 
-def process_image (net, image_name, im_root, obj_proposals, output_root, segmask_root, NMS_THRESH=0.3, CONF_THRESH=0.8, out_ext = ".bbox"):
+def process_image (net, image_name, im_root, obj_proposals, output_root, segmask_root, NMS_THRESH=0.3, CONF_THRESH=0.6, out_ext = ".bbox"):
     
     # IO   
     im_file = os.path.join(im_root, image_name+'.jpg')   
@@ -156,7 +176,10 @@ def process_image (net, image_name, im_root, obj_proposals, output_root, segmask
             segmask_pixels = np.squeeze(segmasks[0,idx])            
             write_segmentation_mask(output_file, cls_ind, dets[i][4], dets[i][0:4], segmask_pixels)
             #write_detection(output_file, cls_ind, dets[i][4], dets[i][0:4])
-        
+            
+            imtemp = im.copy()
+            view_segmentation(imtemp, segmask_pixels, dets[i][0:4])
+            vis_detections(imtemp, CLASSES[cls_ind], dets, thresh=CONF_THRESH, save_path=os.path.join(output_root, image_name+'_'+str(idx)+'_'+str(cls_ind)+'_'+str(i)+'_'+'plot.png'))
     
     close_file_write(output_file)
 
@@ -209,7 +232,7 @@ def parse_args():
     parser.add_argument('--net', dest='demo_net', help='Network to use [vgg16]',
                         choices=NETS.keys(), default='vgg16submission')
     parser.add_argument('--input_im_root', dest='input_im_root', default='/media/torrvision/catz/Data/VOCdevkit/VOC2012/JPEGImages')
-    parser.add_argument('--output_root', dest='output_root', default='/media/torrvision/catz/pascal-bbox')  
+    parser.add_argument('--output_root', dest='output_root', default='/media/torrvision/catz/pascal-bbox/correct')  
     parser.add_argument('--segmask_root', dest='segmask_root', default='/media/torrvision/catz/selective_search_data_own/')                  
     parser.add_argument('--i', dest='i', default=-1, type=int)    
     
@@ -273,7 +296,7 @@ def main():
         #imname = filenames[i]
         #imname = [str(''.join(letter)) for letter_array in filenames[i] for letter in letter_array]
         #imname = imname[0]
-        #i = 636
+        i = 1
         imname = filenames[i].strip()
 
         proposal_file = sio.loadmat( os.path.join(cfg.ROOT_DIR, 'data', 'selective_search_data_own', imname+'_bbox.mat') )        
